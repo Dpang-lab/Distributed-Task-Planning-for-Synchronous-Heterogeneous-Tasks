@@ -3,7 +3,7 @@
 ## Literature Review for General Interaction-Aware Goal Assignment
 
 **Paper:** Liang Lu, Xiangquan Gao, Hao Wang, Ming Xiang, Zhiyang Zhang, and Bin Han, *Distributed Task Planning Method for Synchronous Execution of Heterogeneous Tasks in Uncertain Environments*, IEEE Transactions on Automation Science and Engineering, Vol. 23, 2026.  
-**DOI:** `10.1109/TASE.2026.3670128`
+**DOI:** [10.1109/TASE.2026.3670128](https://doi.org/10.1109/TASE.2026.3670128)
 
 ---
 
@@ -13,7 +13,7 @@ Our research direction is **General Interaction-Aware Goal Assignment for Multi-
 
 This paper is not a direct one-shot goal-assignment method. It studies a broader task-planning problem with heterogeneous tasks, uncertainty, cooperative synchronization, distributed allocation, and collision-free execution. However, it is highly relevant because it provides a concrete example where assignment quality depends on **other robots and their task sequences**, rather than only on independent robot-task costs.
 
-> **Main takeaway:** the paper moves beyond purely independent robot-task scoring by adding synchronization-aware cooperative gains and graph-based dependency reasoning. However, its interaction model is specialized to cooperative task synchronization and deadlock prevention rather than general motion interaction.
+> **Main takeaway:** The paper moves beyond purely independent robot-task scoring by adding synchronization-aware cooperative gains and graph-based dependency reasoning. However, its interaction model is specialized to cooperative task synchronization and deadlock prevention rather than general motion interaction.
 
 ---
 
@@ -52,7 +52,24 @@ The framework has four important components:
 3. **Distributed task allocation with deadlock prevention**, using a Cooperative Task Directed Graph (CTDG), auction, consensus, and cycle detection.
 4. **Progress-aware cooperative motion planning**, combining synchronization-aware desired velocity with ORCA collision avoidance.
 
-This means the paper is solving a broader MRTA + scheduling + motion-planning problem rather than the initial one-shot goal-assignment problem in our project.
+### Paper figure: heterogeneous-task transformation
+
+The paper's **Fig. 2 (paper page 6207)** shows how area, line, and point tasks are converted into a common point-task representation. The simplified schematic below recreates the structure of that figure for this review.
+
+```mermaid
+flowchart LR
+    A[Area task] --> D1[Triangular-grid decomposition]
+    L[Line task] --> D2[Key-point discretization]
+    P[Cooperative point task] --> D3[Co-located synchronous subtasks]
+    D1 --> U[Unified point-task set]
+    D2 --> U
+    D3 --> U
+    U --> TA[Distributed task allocation]
+```
+
+**Why this matters:** the assignment algorithm receives a standardized point-task representation even though the original tasks have different geometries.
+
+This means the paper is solving a broader **MRTA + scheduling + motion-planning** problem rather than the initial one-shot goal-assignment problem in our project.
 
 ---
 
@@ -60,20 +77,20 @@ This means the paper is solving a broader MRTA + scheduling + motion-planning pr
 
 The paper does **not** represent assignment quality only by a pairwise cost such as
 
-$$
+```math
 c_{ij}=d(r_i,g_j).
-$$
+```
 
-Instead, each robot is assigned an **ordered task sequence** $S_{R_i}$ and receives a performance value
+Instead, each robot is assigned an **ordered task sequence** and receives a performance value.
 
-$$
+```math
 f_{R_i}(S_{R_i})
 =
 \sum_{T_j\in S_{R_i}}
 \mu_{ij}\omega_j
 \lambda_d^{L(p_i^j)}
 \lambda_n^{\delta(p_i^j)}.
-$$
+```
 
 The terms encode:
 
@@ -82,57 +99,52 @@ The terms encode:
 | $\mu_{ij}$ | robot-task fitness / capability |
 | $\omega_j$ | task urgency |
 | $L(p_i^j)$ | estimated travel/arrival time using the CVaR model |
-| $\delta(p_i^j)$ | number of tasks already associated with the path/sequence |
+| $\delta(p_i^j)$ | number of tasks associated with the path/sequence |
 | $\lambda_d$ | travel-time discount factor |
 | $\lambda_n$ | task-number / workload discount factor |
 
 The global objective is
 
-$$
-S^*=
+```math
+S^*
+=
 \arg\max_{S\in S_{\mathrm{feasible}}}
-\sum_{R_i\in R}f_{R_i}(S_{R_i}),
-$$
+\sum_{R_i\in R} f_{R_i}(S_{R_i}).
+```
 
-subject to conflict-free assignment and cooperative temporal constraints.
+So the base score already depends on more than geometric distance: it also includes **robot capability, urgency, estimated execution time, and load**.
 
 ## Marginal gain during auction
 
-The auction evaluates the marginal gain of adding a candidate task:
+The distributed auction evaluates the marginal gain of adding a candidate task:
 
-$$
-\Delta f(v\mid S)=f(S\cup\{v\})-f(S).
-$$
+```math
+\Delta f(v\mid S)
+=
+f(S\cup\{v\})-f(S).
+```
 
-For cooperative tasks, this is extended with a **cooperative performance gain**:
+For cooperative tasks, the paper adds a **cooperative performance gain**:
 
-$$
+```math
 \Delta f^s_{R_i}(T_j\mid T_{R_i})
 =
 \Delta f_{R_i}(T_j\mid T_{R_i})
 +
 h_{R_i}(T_j\mid T_{R_i}).
-$$
+```
 
-The additional term depends on the cooperative context. It can account for synchronized arrival compatibility, and a candidate bid is rejected if adding it would create a cycle in the task-dependency graph.
+The additional term depends on the cooperative context. It accounts for whether the candidate robot fits the synchronization requirement with other robots, and a candidate assignment is rejected if it would create a cycle in the cooperative task-dependency graph.
 
 ### Interpretation
 
-The assignment value can therefore be summarized as
+The most useful way to summarize the paper's assignment representation is:
 
-$$
-\boxed{
-\text{assignment quality}
-=
-\text{individual task-sequence utility}
-+
-\text{cooperative-context correction}
-}
-$$
+> **Assignment quality = individual task-sequence utility + cooperative-context correction.**
 
 This is an important step beyond ordinary pairwise robot-goal costs.
 
-At the same time, the representation is still **manually designed** and specific to the cooperative-task structure of this problem. It is not yet a general representation of collective assignment quality.
+However, the representation is still **manually designed and problem-specific**. Its interaction correction is built mainly around synchronous cooperative tasks and dependency/deadlock structure, not around general collective motion effects such as congestion or path crossing.
 
 ---
 
@@ -142,45 +154,50 @@ At the same time, the representation is still **manually designed** and specific
 
 This distinction is important for our project.
 
-### 3.1 Interaction during task allocation: yes
+## 3.1 Interaction during task allocation: yes
 
-The paper introduces the **Cooperative Task Directed Graph (CTDG)**. A directed edge between two cooperative task groups means that the execution order assigned to one or more robots creates a dependency between those groups.
+The paper introduces the **Cooperative Task Directed Graph (CTDG)**. A directed edge between two cooperative task groups means that the task order of one or more robots creates a dependency between those groups.
 
-For example,
+For example:
 
-$$
-T_{s1}\rightarrow T_{s2}
-$$
+```math
+T_{s1}\rightarrow T_{s2}.
+```
 
-means some robot must execute $T_{s1}$ before $T_{s2}$.
+Across several robots, inconsistent task orders can create a dependency cycle:
 
-Across several robots, inconsistent task orders can create a cycle such as
+```math
+T_{s1}\rightarrow T_{s2}\rightarrow T_{s3}\rightarrow T_{s1}.
+```
 
-$$
-T_{s1}\rightarrow T_{s2}\rightarrow T_{s3}\rightarrow T_{s1},
-$$
+A cycle means circular waiting and therefore a potential deadlock.
 
-which causes circular waiting and therefore a deadlock.
+During bidding, each robot checks whether a candidate task would introduce such a cycle. Therefore, the feasibility and value of assigning a task to one robot depend on assignments involving other robots.
 
-During bidding, each robot checks whether a candidate task would create such a cycle. This means the value and even the feasibility of assigning a task to one robot depend on task assignments already involving other robots.
+That is genuinely **interaction-aware assignment**.
 
-That is genuinely interaction-aware assignment.
+### Paper figure: assignment-induced cooperative deadlock
 
-### 3.2 Interaction through synchronization: yes
+The paper's **Fig. 4 (paper page 6208)** illustrates how several individually reasonable task sequences can collectively generate a circular dependency. The simplified schematic below recreates the key idea.
 
-The arrival time for a cooperative task is not determined by one robot alone. The paper aligns the participating robots using the maximum of their relevant ready/arrival times.
+```mermaid
+flowchart LR
+    C1[Cooperative task 1] --> C2[Cooperative task 2]
+    C2 --> C3[Cooperative task 3]
+    C3 --> C1
+```
 
-Therefore, one robot's schedule depends on the schedules of the other robots participating in the cooperative task.
+The important point is not just collision avoidance: **the assignment/task-order decision itself can create an impossible global dependency structure**. CTDG detects this before execution.
 
-Again,
+## 3.2 Interaction through synchronization: yes
 
-$$
-\text{quality}(R_i,T_j)
-$$
+For a cooperative task, one robot's timing cannot be evaluated independently. The paper aligns the participating robots according to their relevant ready/arrival times.
 
-cannot always be determined independently from the rest of the team.
+Therefore, one robot's schedule depends on the schedules of the other robots participating in the same cooperative task.
 
-### 3.3 Robot-robot collision interaction: yes, but mainly after assignment
+In other words, the value of assigning robot $R_i$ to task $T_j$ is not always a function of $R_i$ and $T_j$ alone.
+
+## 3.3 Robot-robot collision interaction: yes, but mainly after assignment
 
 During execution, the system uses ORCA to avoid robot-robot and robot-obstacle collisions. The preferred velocity is also adjusted according to cooperative task progress so that robots can arrive synchronously.
 
@@ -225,17 +242,11 @@ The cooperative performance gain changes the assignment score according to the c
 
 Conceptually, the paper changes
 
-$$
-\text{local assignment value}
-$$
+> **local assignment value**
 
 into
 
-$$
-\text{local assignment value}
-+
-\text{collective-context-dependent value}.
-$$
+> **local assignment value + collective-context-dependent value**.
 
 This is one of the strongest links to our research direction.
 
@@ -261,7 +272,7 @@ No cooperation -> Weak cooperation -> Moderate cooperation -> Strong cooperation
 
 This is valuable because it directly tests what happens as robot-robot dependence becomes stronger.
 
-Under stronger cooperative constraints, several baseline allocation methods can enter deadlock or fail to complete all tasks, while the proposed method maintains a 100% task achievement rate in the reported experiments.
+Under stronger cooperative constraints, several baseline allocation methods can enter deadlock or fail to complete all tasks, while the proposed method maintains a **100% task achievement rate** in the reported experiments.
 
 ## 4.6 Scalability and real-world validation
 
@@ -277,9 +288,9 @@ The physical experiment uses three RoboMaster TT UAVs in a $3\,\mathrm{m}\times3
 
 Our immediate research direction is closer to
 
-$$
-N\text{ robots}+N\text{ goals}\rightarrow\text{one assignment}\rightarrow\text{fixed planner}.
-$$
+```text
+N robots + N goals -> one assignment -> fixed planner
+```
 
 This paper instead handles task sequencing, heterogeneous task conversion, dynamic allocation, cooperative synchronization, and repeated task execution.
 
@@ -287,20 +298,21 @@ Therefore, it should be treated as a **source of concepts and baselines**, not a
 
 ## 5.2 The global objective is still largely robot-wise additive
 
-The optimization objective is based on
+The optimization objective is fundamentally based on the sum of individual robot performance functions:
 
-$$
+```math
 \sum_i f_{R_i}(S_{R_i}).
-$$
+```
 
 Much of $f_{R_i}$ still describes one robot's own task sequence: fitness, urgency, travel time, and workload.
 
-The cooperative correction introduces useful interaction context, but the representation is still much more decomposable than the system-level objective we ultimately care about:
+The cooperative correction introduces useful interaction context, but the representation is still much more decomposable than the system-level objective we ultimately care about. A simple notation for our broader objective is:
 
-$$
-J_{\mathrm{system}}
-\left(A,\operatorname{Planner}(A),\mathcal E\right).
-$$
+```math
+J_{\mathrm{system}}\bigl(A,\mathrm{Planner}(A),\mathcal{E}\bigr).
+```
+
+Here, assignment quality is judged by what happens after the assignment is passed to the downstream planner and executed in the shared environment.
 
 ## 5.3 Generic robot-robot motion interaction is not represented during assignment
 
@@ -366,29 +378,21 @@ It does not demonstrate learned generalization across unseen robot counts, maps,
 
 ## Idea 1 — Generalize the cooperative correction term
 
-The most useful conceptual idea from this paper is
+The most useful conceptual idea from this paper is:
 
-$$
-\boxed{
-\text{assignment score}
-=
-\text{local score}
-+
-\text{interaction correction}
-}
-$$
+> **Assignment score = local score + interaction correction.**
 
-For our problem, this could become
+For our problem, a possible generalized form is:
 
-$$
+```math
 Q_{ij}^{\mathrm{general}}
 =
 Q_{ij}^{\mathrm{local}}
 +
-\Phi(r_i,g_j,\mathcal R,\mathcal G,\mathcal E),
-$$
+\Phi(r_i,g_j,\mathcal{R},\mathcal{G},\mathcal{E}).
+```
 
-where $\Phi$ is no longer limited to synchronization and task dependencies.
+Here, $\Phi$ is no longer limited to synchronization and task dependencies.
 
 It could represent predicted:
 
@@ -410,34 +414,29 @@ This is a natural place to investigate GNNs, Transformers, hypergraphs, learned 
 
 The paper uses CTDG edges to represent cooperative task dependencies. We can generalize this idea by building a graph whose edges represent likely motion interaction between candidate robot-goal assignments.
 
-For example, an edge between robots $i$ and $k$ could contain
+For example, an edge between robots $i$ and $k$ could contain a feature vector such as
 
-$$
-e_{ik}=
-[
-\text{predicted crossing},
-\text{shared corridor},
-\text{minimum separation},
-\text{temporal overlap},
-\text{goal competition}
-].
-$$
+```math
+e_{ik}
+=
+[\mathrm{crossing},\mathrm{shared\ corridor},\mathrm{min\ separation},\mathrm{temporal\ overlap},\mathrm{goal\ competition}].
+```
 
 A graph-based model could then evaluate the assignment from a collective perspective before the full planner runs.
 
 ## Idea 3 — Use risk-aware system-level assignment later
 
-The paper applies CVaR to uncertain travel time. A future extension of our project could instead evaluate risk in the whole assignment outcome:
+The paper applies CVaR to uncertain travel time. A future extension of our project could evaluate risk in the whole assignment outcome instead:
 
-$$
-\operatorname{CVaR}\left(J_{\mathrm{system}}(A)\right).
-$$
+```math
+\mathrm{CVaR}_{\alpha}\bigl(J_{\mathrm{system}}(A)\bigr).
+```
 
 Planner executions could be sampled under perturbations such as dynamic obstacles, robot delays, or uncertain execution times. This would favor assignments that are robust not only on average but also in poor execution conditions.
 
 ## Idea 4 — Borrow the interaction-strength experimental design
 
-A good experiment for our project could deliberately vary interaction difficulty:
+A useful experiment for our project could deliberately vary interaction difficulty:
 
 ```text
 Low interaction
@@ -463,7 +462,7 @@ This isolates assignment quality from planner quality.
 
 Inspired by this paper's cooperative correction, we can build a simple interpretable baseline:
 
-$$
+```math
 Q(A)
 =
 Q_{\mathrm{distance}}(A)
@@ -473,7 +472,7 @@ Q_{\mathrm{distance}}(A)
 \beta N_{\mathrm{conflict}}
 -
 \gamma C_{\mathrm{congestion}}.
-$$
+```
 
 This gives us an intermediate baseline between ordinary Hungarian assignment and a future learned interaction-aware model.
 
@@ -504,16 +503,15 @@ Its most important contribution for our research is not simply CVaR, ORCA, or he
 
 However, the modeled interactions are specialized to
 
-$$
-\text{synchronization} + \text{cooperative dependency} + \text{deadlock prevention}.
-$$
+```text
+synchronization + cooperative dependency + deadlock prevention
+```
 
-Our intended research is broader. We want assignment to anticipate general collective effects such as
+while our intended research is broader:
 
-$$
-\text{path crossing} + \text{congestion} + \text{blocking}
-+ \text{corridor competition} + \text{planner conflicts}.
-$$
+```text
+path crossing + congestion + blocking + corridor competition + planner conflicts
+```
 
 So the main research opportunity suggested by this paper is:
 
